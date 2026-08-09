@@ -5,6 +5,8 @@ button, input { font: inherit; }
 button { color: inherit; border: 0; cursor: pointer; }
 .app-shell, #canvas { position: fixed; inset: 0; }
 #canvas { touch-action: none; cursor: crosshair; }
+/* Overlay canvas floats above #canvas; all pointer events pass through to #canvas */
+#overlay { position: fixed; inset: 0; pointer-events: none; touch-action: none; z-index: 1; }
 .topbar { position: fixed; top: 22px; left: 28px; right: 28px; display: flex; align-items: center; justify-content: space-between; pointer-events: none; }
 .topbar button, .toolbar, .inspector, .zoom-control { pointer-events: auto; }
 .wordmark { padding: 7px 0; background: none; font-size: 16px; letter-spacing: -0.55px; font-weight: 650; }
@@ -29,3 +31,26 @@ dialog { width:min(390px,calc(100vw - 32px)); border:1px solid #d9d9d3; border-r
 .shortcuts-list{border-top:1px solid #ecece7}.shortcuts-list>div{display:flex;align-items:center;justify-content:space-between;gap:14px;border-bottom:1px solid #ecece7;padding:9px 0;font-size:11px}.shortcuts-list>div>span:last-child{color:#666661;text-align:right}kbd{display:inline-block;padding:2px 5px;border:1px solid #d5d5cf;border-bottom-width:2px;border-radius:4px;background:#f7f7f4;font:10px ui-monospace,SFMono-Regular,Consolas,monospace;white-space:nowrap}
 @media (max-width: 680px) { .topbar { left:16px; right:16px; top:14px; }.topbar-actions > #undoButton, .topbar-actions > #redoButton { display:none; }.toolbar { bottom:17px; max-width: calc(100vw - 24px); }.tool { min-width:38px; }.tool span:last-child { display:none; }.inspector { right:16px; bottom:70px; }.zoom-control { left:16px; bottom:70px; }.hint { width:260px; text-align:center; } }
 @media (max-width: 480px) { .wordmark{font-size:14px}.topbar-actions{gap:1px}.topbar-actions>button,.export-menu>button{font-size:11px;padding:7px}.topbar-actions>#historyButton{display:none}.divider{margin:0 1px}.toolbar{gap:0;padding:4px;bottom:12px}.tool{min-width:42px;padding:9px 7px}.tool-icon{transform:scale(1.1)}.inspector{bottom:65px;right:12px;gap:8px;padding:7px 9px}.zoom-control{bottom:65px;left:12px}.hint{top:43%;font-size:11px}.dialog-card{padding:16px}.dialog-card footer button{min-height:38px}.menu{right:0;top:34px}.text-editor{max-width:calc(100vw - 24px)} }
+/* Tablet / coarse-pointer touch targets — fires on any device with a coarse pointer (touch, stylus) */
+@media (pointer: coarse) {
+  /* Bigger tool buttons */
+  .tool { min-width:52px; padding:11px 8px 9px; gap:5px; }
+  .tool-icon { transform: scale(1.15); }
+  /* Taller, wider zoom buttons */
+  .zoom-control button { height:38px; min-width:36px; }
+  .zoom-control #zoomLabel { min-width:54px; }
+  /* Wider slider and colour swatch */
+  .setting input[type="range"] { width:88px; height:20px; }
+  .setting input[type="color"] { height:24px; width:24px; }
+  /* Topbar buttons easier to tap */
+  .topbar-actions > button, .export-menu > button { padding:10px 12px; }
+  /* Dialog buttons easier to tap */
+  .dialog-card footer button { min-height:44px; padding:10px 14px; }
+}
+/* Safe-area insets for notched / rounded-corner tablets */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .toolbar    { bottom: max(29px, calc(17px + env(safe-area-inset-bottom))); }
+  .inspector  { bottom: max(29px, calc(17px + env(safe-area-inset-bottom))); }
+  .zoom-control { bottom: max(29px, calc(17px + env(safe-area-inset-bottom))); }
+  .topbar     { top: max(22px, env(safe-area-inset-top)); left: max(28px, env(safe-area-inset-left)); right: max(28px, env(safe-area-inset-right)); }
+}
