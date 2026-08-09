@@ -13,11 +13,6 @@ An infinite canvas for thinking the way humans actually think — not in folders
   <img src="https://img.shields.io/badge/PWA-ready-e0af68?style=for-the-badge&labelColor=1a1b26" alt="pwa"/>
 </p>
 
-<p>
-  <img src="https://img.shields.io/github/stars/ABHIRAM-CREATOR06/MindCanvas?style=flat-square&color=7aa2f7&labelColor=1a1b26" alt="stars"/>
-  <img src="https://img.shields.io/github/last-commit/ABHIRAM-CREATOR06/MindCanvas?style=flat-square&color=9ece6a&labelColor=1a1b26" alt="last commit"/>
-  <img src="https://img.shields.io/github/issues/ABHIRAM-CREATOR06/MindCanvas?style=flat-square&color=f7768e&labelColor=1a1b26" alt="issues"/>
-</p>
 
 It isn't another note-taking app. It isn't another whiteboard.
 It's a place where ideas can exist exactly as they appear in your mind.
