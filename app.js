@@ -13,6 +13,58 @@
   // — lift pen, reposition writing hand, rest palm again — commonly run 2-4s, not <1s.
   const GUARD_MS = { normal: 1800, stylus: 4000 }
   function guardWindow(){ return state.stylusOnly ? GUARD_MS.stylus : GUARD_MS.normal }
+  // --- Toolbar customization: which tools show, in what order, and where the toolbar sits ---
+  const TOOL_DEFS = [
+    {id:'pen',label:'Pen'},{id:'brush',label:'Brush'},{id:'highlighter',label:'Mark'},
+    {id:'text',label:'Text'},{id:'shape',label:'Shape'},{id:'eraser',label:'Erase'},
+    {id:'lasso',label:'Select'},{id:'hand',label:'Hand'}
+  ]
+  const TOOLBAR_CFG_KEY = 'mc-toolbar-config'
+  function defaultToolbarConfig(){ return {order:TOOL_DEFS.map(t=>t.id), hidden:[], position:'bottom-center'} }
+  function loadToolbarConfig(){
+    try{
+      const raw=localStorage.getItem(TOOLBAR_CFG_KEY)
+      if(!raw)return defaultToolbarConfig()
+      const cfg=JSON.parse(raw)
+      if(!Array.isArray(cfg.order)||!Array.isArray(cfg.hidden))return defaultToolbarConfig()
+      // Keep config forward-compatible if tools are ever added/removed later
+      TOOL_DEFS.forEach(t=>{if(!cfg.order.includes(t.id))cfg.order.push(t.id)})
+      cfg.order=cfg.order.filter(id=>TOOL_DEFS.some(t=>t.id===id))
+      cfg.hidden=cfg.hidden.filter(id=>TOOL_DEFS.some(t=>t.id===id))
+      if(!cfg.position)cfg.position='bottom-center'
+      return cfg
+    }catch{return defaultToolbarConfig()}
+  }
+  function saveToolbarConfig(cfg){localStorage.setItem(TOOLBAR_CFG_KEY,JSON.stringify(cfg))}
+  function applyToolbarConfig(){
+    const cfg=state.toolbarConfig, bar=$('.toolbar')
+    bar.classList.remove('pos-bottom-left','pos-bottom-right','pos-left','pos-right')
+    if(cfg.position!=='bottom-center')bar.classList.add('pos-'+cfg.position)
+    cfg.order.forEach((id,idx)=>{
+      const btn=bar.querySelector(`[data-tool="${id}"]`)
+      if(!btn)return
+      btn.style.order=idx
+      btn.style.display=cfg.hidden.includes(id)?'none':''
+    })
+    // If the active tool just got hidden, fall back to the first visible tool
+    if(cfg.hidden.includes(state.tool)){
+      const fallback=cfg.order.find(id=>!cfg.hidden.includes(id))
+      if(fallback)tool(fallback)
+    }
+  }
+  function syncPositionButtons(){
+    document.querySelectorAll('.position-option').forEach(b=>b.classList.toggle('active',b.dataset.position===state.toolbarConfig.position))
+  }
+  function renderToolConfigList(){
+    const list=$('#toolConfigList'); list.innerHTML=''
+    const cfg=state.toolbarConfig
+    cfg.order.forEach((id,idx)=>{
+      const def=TOOL_DEFS.find(t=>t.id===id); if(!def)return
+      const row=document.createElement('div'); row.className='tool-config-row'
+      row.innerHTML=`<input type="checkbox" ${cfg.hidden.includes(id)?'':'checked'} data-toggle="${id}" aria-label="Show ${def.label}"/><span class="tc-name">${def.label}</span><span class="tc-move"><button type="button" data-up="${id}" ${idx===0?'disabled':''} aria-label="Move ${def.label} up">↑</button><button type="button" data-down="${id}" ${idx===cfg.order.length-1?'disabled':''} aria-label="Move ${def.label} down">↓</button></span>`
+      list.appendChild(row)
+    })
+  }
   // RAF guard: coalesce all event-driven renders into one rAF callback per frame
   function scheduleRender(){
     if(state.rafPending)return
@@ -347,8 +399,20 @@
       return render()
     }
     releasePointer(e.pointerId)
-    // If finger lifted before crossing the slop threshold, treat as tap — no stroke
-    if(state.touchSlop){state.touchSlop=null;return}
+    // If finger lifted before crossing the slop threshold, it's a genuine tap, not a drag.
+    // For pen/brush/shape a tap should draw nothing (avoids stray dots from a resting
+    // palm), but eraser and select are single-tap tools by design — a tap is the whole
+    // gesture, not an aborted drag, so route those two through their tap actions here.
+    if(state.touchSlop){
+      const slop=state.touchSlop;state.touchSlop=null
+      if(slop.tool==='eraser'){erase(slop.w);return}
+      if(slop.tool==='lasso'){
+        const hit=objectAt(slop.w)
+        state.selected=hit>=0?new Set([hit]):new Set()
+        return render()
+      }
+      return
+    }
     if(state.pan){state.pan=null;persist();return}
     if(state.moving){state.moving=null;persist();return}
     if(!state.drawing)return
@@ -386,6 +450,42 @@
   async function importCanvas(file){try{const data=JSON.parse(await file.text());if(!Array.isArray(data.objects))throw Error();if(!confirm(`Replace this canvas with ${data.objects.length} imported objects? A snapshot of the current canvas will be saved first.`))return;snapshot();state.objects=data.objects;state.camera=data.camera||{x:0,y:0,zoom:1};state.undone=[];state.selected.clear();rebakeOffscreen();persist();render();toast('Canvas imported')}catch{toast('That file is not a valid MindCanvas JSON export')}}
   document.querySelectorAll('.tool').forEach(b=>b.onclick=()=>tool(b.dataset.tool));$('#colorInput').oninput=e=>{state.color=e.target.value;styleSelection({color:state.color})};$('#sizeInput').oninput=e=>{state.size=+e.target.value;$('#sizeOutput').textContent=state.size;styleSelection({size:state.size})};$('#shapeInput').oninput=e=>state.shape=e.target.value;$('#importButton').onclick=()=>$('#importInput').click();$('#importInput').onchange=e=>{if(e.target.files[0])importCanvas(e.target.files[0]);e.target.value=''};$('#undoButton').onclick=()=>{if(state.objects.length){state.undone.push(state.objects.pop());rebakeOffscreen();persist();render()}};$('#redoButton').onclick=()=>{if(state.undone.length){state.objects.push(state.undone.pop());rebakeOffscreen();persist();render()}};$('#clearButton').onclick=()=>{if(state.objects.length&&confirm('Clear everything on this canvas?')){state.undone.push(...state.objects);state.objects=[];rebakeOffscreen();persist();render();toast('Canvas cleared')}};$('#homeButton').onclick=()=>{state.camera={x:0,y:0,zoom:1};rebakeOffscreen();persist();render()};$('#zoomIn').onclick=()=>zoom(1.2);$('#zoomOut').onclick=()=>zoom(1/1.2);$('#zoomLabel').onclick=()=>{state.camera.zoom=1;rebakeOffscreen();persist();render()};
   $('#exportButton').onclick=()=>{const m=$('#exportOptions');m.hidden=!m.hidden};document.querySelectorAll('[data-export]').forEach(b=>b.onclick=()=>{state.exportType=b.dataset.export;$('#exportOptions').hidden=true;$('#exportDialog').showModal()});$('#confirmExport').onclick=e=>{e.preventDefault();runExport();$('#exportDialog').close()};$('#shareButton').onclick=()=>$('#shareDialog').showModal();$('#generateShare').onclick=e=>{e.preventDefault();const opts={permission:document.querySelector('[name="permission"]:checked').value,downloadDisabled:$('#downloadDisabled').checked,password:!!$('#sharePassword').value,expiry:$('#shareExpiry').value||'none'};const token=crypto.randomUUID().replaceAll('-','').slice(0,16),out=$('#shareResult');out.hidden=false;out.textContent=`mindcanvas://share/${token} (${opts.permission}; password: ${opts.password?'set':'none'}; expires: ${opts.expiry})`;toast('Local share configuration created')};$('#historyButton').onclick=()=>{timeline();$('#historyDialog').showModal()};$('#snapshotButton').onclick=e=>{e.preventDefault();snapshot()};$('#vaultButton').onclick=()=>{if(!state.vault.enabled)showVault('create');else if(state.vault.key){state.vault.key=null;updateVaultButton();toast('Vault locked in this tab')}else showVault('unlock')};$('#shortcutsButton').onclick=()=>$('#shortcutsDialog').showModal();$('#vaultClose').onclick=$('#vaultCancel').onclick=()=>$('#vaultDialog').close();$('#vaultDialog form').addEventListener('submit',submitVault);$('#accessibilityButton').onclick=()=>{document.body.classList.toggle('high-contrast');document.body.classList.toggle('large-cursor');toast(document.body.classList.contains('high-contrast')?'High contrast and large cursor on':'Accessibility display reset')};
+  // --- Toolbar customization wiring ---
+  state.toolbarConfig=loadToolbarConfig()
+  applyToolbarConfig()
+  $('#customizeToolbarButton').onclick=()=>{renderToolConfigList();syncPositionButtons();$('#customizeDialog').showModal()}
+  $('#toolConfigList').addEventListener('change',e=>{
+    if(!e.target.matches('[data-toggle]'))return
+    const id=e.target.dataset.toggle, cfg=state.toolbarConfig
+    if(!e.target.checked){
+      const wouldBeHidden=new Set([...cfg.hidden,id])
+      if(wouldBeHidden.size>=TOOL_DEFS.length){e.target.checked=true;toast('Keep at least one tool visible');return}
+      cfg.hidden.push(id)
+    }else{
+      cfg.hidden=cfg.hidden.filter(h=>h!==id)
+    }
+    saveToolbarConfig(cfg);applyToolbarConfig()
+  })
+  $('#toolConfigList').addEventListener('click',e=>{
+    const upId=e.target.dataset.up, downId=e.target.dataset.down
+    if(!upId&&!downId)return
+    const cfg=state.toolbarConfig, id=upId||downId, i=cfg.order.indexOf(id), j=upId?i-1:i+1
+    if(j<0||j>=cfg.order.length)return
+    ;[cfg.order[i],cfg.order[j]]=[cfg.order[j],cfg.order[i]]
+    saveToolbarConfig(cfg);applyToolbarConfig();renderToolConfigList()
+  })
+  $('#positionGrid').addEventListener('click',e=>{
+    const btn=e.target.closest('[data-position]');if(!btn)return
+    state.toolbarConfig.position=btn.dataset.position
+    saveToolbarConfig(state.toolbarConfig)
+    applyToolbarConfig();syncPositionButtons()
+  })
+  $('#resetToolbarButton').onclick=()=>{
+    state.toolbarConfig=defaultToolbarConfig()
+    saveToolbarConfig(state.toolbarConfig)
+    applyToolbarConfig();renderToolConfigList();syncPositionButtons()
+    toast('Toolbar reset to default')
+  }
   // --- Stylus Only toggle ---
   $('#stylusOnlyButton').onclick=()=>{
     state.stylusOnly=!state.stylusOnly

@@ -54,6 +54,8 @@
         <button class="tool" data-tool="eraser" title="Eraser (E)"><span class="tool-icon eraser-icon"></span><span>Erase</span></button>
         <button class="tool" data-tool="lasso" title="Select (V)"><span class="tool-icon lasso-icon"></span><span>Select</span></button>
         <button class="tool" data-tool="hand" title="Hand (Space)"><span class="tool-icon hand-icon"></span><span>Hand</span></button>
+        <span class="toolbar-divider"></span>
+        <button class="customize-btn" id="customizeToolbarButton" title="Customize toolbar" aria-label="Customize toolbar"><span class="tool-icon customize-icon"></span><span>Edit</span></button>
       </section>
 
       <aside class="inspector" aria-label="Tool settings">
@@ -118,6 +120,27 @@
           <label id="confirmPassphraseLabel" class="modal-field">Confirm <input id="vaultConfirmation" type="password" autocomplete="new-password" minlength="12" required /></label>
           <p id="vaultError" class="form-error" role="alert"></p>
           <footer><button id="vaultCancel" type="button">Cancel</button><button id="vaultSubmit" class="primary" value="default">Encrypt data</button></footer>
+        </form>
+      </dialog>
+      <dialog id="customizeDialog">
+        <form method="dialog" class="dialog-card customize-card">
+          <header><h2>Customize toolbar</h2><button class="close-button" value="cancel" aria-label="Close">×</button></header>
+          <p>Choose which tools appear, their order, and where the toolbar sits.</p>
+          <fieldset>
+            <legend>Position</legend>
+            <div class="position-grid" id="positionGrid">
+              <button type="button" data-position="bottom-center" class="position-option">Bottom</button>
+              <button type="button" data-position="bottom-left" class="position-option">Bottom Left</button>
+              <button type="button" data-position="bottom-right" class="position-option">Bottom Right</button>
+              <button type="button" data-position="left" class="position-option">Left Side</button>
+              <button type="button" data-position="right" class="position-option">Right Side</button>
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>Tools shown &amp; order</legend>
+            <div id="toolConfigList" class="tool-config-list"></div>
+          </fieldset>
+          <footer><button type="button" id="resetToolbarButton">Reset to default</button><button value="default" class="primary">Done</button></footer>
         </form>
       </dialog>
       <dialog id="shortcutsDialog">
