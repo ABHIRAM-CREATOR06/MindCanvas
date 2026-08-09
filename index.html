@@ -25,6 +25,7 @@
           <button id="redoButton" title="Redo (Ctrl/Cmd + Shift + Z)" disabled>Redo</button>
           <span class="divider"></span>
           <button id="clearButton" title="Clear canvas">Clear</button>
+          <button id="importButton" title="Import a MindCanvas JSON file">Import</button>
           <button id="historyButton" title="Snapshots and timeline">History</button>
           <button id="vaultButton" title="Encrypt local canvas data">Lock</button>
           <button id="shareButton" title="Prepare a private share link">Share</button>
@@ -47,6 +48,7 @@
         <button class="tool" data-tool="brush" title="Brush (B)"><span class="tool-icon brush-icon"></span><span>Brush</span></button>
         <button class="tool" data-tool="highlighter" title="Highlighter (H)"><span class="tool-icon highlighter-icon"></span><span>Mark</span></button>
         <button class="tool" data-tool="text" title="Text (T)"><span class="tool-icon text-icon">T</span><span>Text</span></button>
+        <button class="tool" data-tool="shape" title="Shape (R)"><span class="tool-icon shape-icon"></span><span>Shape</span></button>
         <button class="tool" data-tool="eraser" title="Eraser (E)"><span class="tool-icon eraser-icon"></span><span>Erase</span></button>
         <button class="tool" data-tool="lasso" title="Select (V)"><span class="tool-icon lasso-icon"></span><span>Select</span></button>
         <button class="tool" data-tool="hand" title="Hand (Space)"><span class="tool-icon hand-icon"></span><span>Hand</span></button>
@@ -55,6 +57,7 @@
       <aside class="inspector" aria-label="Tool settings">
         <label class="setting"><span>Color</span><input id="colorInput" type="color" value="#171717" /></label>
         <label class="setting"><span>Size</span><input id="sizeInput" type="range" min="1" max="36" value="4" /><output id="sizeOutput">4</output></label>
+        <label class="setting"><span>Shape</span><select id="shapeInput" aria-label="Shape type"><option value="line">Line</option><option value="rectangle">Box</option><option value="ellipse">Oval</option></select></label>
         <button id="accessibilityButton" class="icon-button" title="Accessibility settings" aria-label="Accessibility settings">Aa</button>
       </aside>
 
@@ -64,7 +67,9 @@
         <button id="zoomIn" aria-label="Zoom in">+</button>
       </div>
       <p id="hint" class="hint">Draw freely. Your canvas is saved on this device.</p>
+      <p id="saveStatus" class="save-status" aria-live="polite">Saved locally</p>
       <div id="textEditor" class="text-editor" contenteditable="true" spellcheck="true" hidden></div>
+      <input id="importInput" type="file" accept="application/json,.json" hidden />
       <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
       <dialog id="exportDialog">
@@ -110,12 +115,13 @@
           <header><h2>Keyboard shortcuts</h2><button class="close-button" value="cancel" aria-label="Close">×</button></header>
           <div class="shortcuts-list">
             <div><span><kbd>P</kbd>, <kbd>B</kbd>, <kbd>H</kbd></span><span>Pen, brush, highlighter</span></div>
-            <div><span><kbd>T</kbd>, <kbd>E</kbd>, <kbd>V</kbd></span><span>Text, erase, select</span></div>
+            <div><span><kbd>T</kbd>, <kbd>R</kbd>, <kbd>E</kbd>, <kbd>V</kbd></span><span>Text, shapes, erase, select</span></div>
             <div><span><kbd>Space</kbd> or <kbd>Shift</kbd> + drag</span><span>Pan canvas</span></div>
             <div><span><kbd>⌘/Ctrl</kbd> + <kbd>Z</kbd></span><span>Undo</span></div>
             <div><span><kbd>⌘/Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd></span><span>Redo</span></div>
             <div><span><kbd>⌘/Ctrl</kbd> + <kbd>S</kbd></span><span>Save snapshot</span></div>
             <div><span><kbd>⌘/Ctrl</kbd> + <kbd>E</kbd></span><span>Export</span></div>
+            <div><span><kbd>⌘/Ctrl</kbd> + <kbd>D</kbd></span><span>Duplicate selection</span></div>
             <div><span><kbd>+</kbd> / <kbd>−</kbd> / <kbd>0</kbd></span><span>Zoom in, out, reset</span></div>
             <div><span><kbd>Delete</kbd> / <kbd>Backspace</kbd></span><span>Delete selected objects</span></div>
             <div><span><kbd>?</kbd></span><span>Show this guide</span></div>
