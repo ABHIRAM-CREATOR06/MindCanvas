@@ -61,16 +61,17 @@
     target.globalAlpha=1
   }
   // Bake all committed objects into the offscreen canvas.
-  // Called after every commit/undo/redo/clear/restore so live drawing can skip full re-render.
+  // offCtx has the DPR transform applied (set in resize()), so all coordinates
+  // here are CSS pixel space — use innerWidth/innerHeight, NOT offscreen.width/height.
   function rebakeOffscreen(){
-    offCtx.clearRect(0,0,offscreen.width,offscreen.height)
+    offCtx.clearRect(0,0,innerWidth,innerHeight)
     state.objects.forEach(o=>{if(isVisible(o))paint(o,offCtx)})
   }
   // Full render: blit the offscreen bake, draw the live stroke on top, then overlays.
   function render(){
     ctx.clearRect(0,0,innerWidth,innerHeight)
     grid()
-    ctx.drawImage(offscreen,0,0,offscreen.width,offscreen.height,0,0,innerWidth,innerHeight)
+    ctx.drawImage(offscreen,0,0,innerWidth,innerHeight)
     if(state.drawing){
       if(state.drawing.type==='lasso'){let d=state.drawing;ctx.strokeStyle='#4b4b46';ctx.setLineDash([5,5]);ctx.strokeRect(d.start.x,d.start.y,d.end.x-d.start.x,d.end.y-d.start.y);ctx.setLineDash([])}
       else paint(state.drawing)
