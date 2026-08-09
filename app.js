@@ -7,7 +7,7 @@
   // Offscreen canvas: committed strokes are pre-baked here so live drawing only appends one segment
   const offscreen = document.createElement('canvas'), offCtx = offscreen.getContext('2d');
   const KEY = 'mindcanvas-v2', SNAP_KEY = 'mindcanvas-snapshots-v1', VAULT_KEY = 'mindcanvas-vault-v1';
-  const state = { objects: [], undone: [], snapshots: [], camera: { x: 0, y: 0, zoom: 1 }, tool: 'pen', color: '#171717', size: 4, shape: 'line', drawing: null, pan: null, moving: null, selected: new Set(), exportType: 'png', vault: { enabled: false, key: null }, writeChain: Promise.resolve(), stylusUntil: 0, ignoredPointers: new Set(), activeDrawPointer: null, pinch: null, barrelPan: null, touchSlop: null, rafPending: false };
+  const state = { objects: [], undone: [], snapshots: [], camera: { x: 0, y: 0, zoom: 1 }, tool: 'pen', color: '#171717', size: 4, shape: 'line', drawing: null, pan: null, moving: null, selected: new Set(), exportType: 'png', vault: { enabled: false, key: null }, writeChain: Promise.resolve(), stylusUntil: 0, ignoredPointers: new Set(), activeDrawPointer: null, pinch: null, barrelPan: null, touchSlop: null, rafPending: false, stylusOnly: localStorage.getItem('mc-stylus-only')==='1' };
   // RAF guard: coalesce all event-driven renders into one rAF callback per frame
   function scheduleRender(){
     if(state.rafPending)return
@@ -124,6 +124,14 @@
     return false
   }
   function selectBox(a,b){state.selected.clear();state.objects.forEach((o,i)=>{let q=bounds(o);if(q.x+q.w>=a.x&&q.x<=b.x&&q.y+q.h>=a.y&&q.y<=b.y)state.selected.add(i)});render()}
+  function updateStylusOnlyButton(){
+    const btn=$('#stylusOnlyButton')
+    btn.classList.toggle('active', state.stylusOnly)
+    btn.title = state.stylusOnly
+      ? 'Stylus Only ON — touch pans only (tap to disable)'
+      : 'Stylus Only OFF — touch can draw (tap to enable)'
+    btn.setAttribute('aria-pressed', state.stylusOnly)
+  }
   canvas.addEventListener('pointerdown',e=>{
     // --- S Pen barrel button (buttons===2): temporary pan regardless of current tool ---
     if(e.pointerType==='pen'&&(e.buttons&2)){
@@ -155,6 +163,12 @@
     state._lastPos=p
     if(state.tool==='hand'||e.shiftKey){state.pan={p,c:{...state.camera}};return}
     if(state.tool==='text')return editor(p,w)
+    // --- Stylus Only mode: touch events skip drawing entirely and become pans.
+    // This is the most reliable palm/finger rejection — zero heuristics, zero false positives.
+    if(state.stylusOnly && e.pointerType==='touch'){
+      state.pan={p,c:{...state.camera}}
+      return
+    }
     // --- Touch slop: don't commit a stroke/erase/lasso immediately for touch events.
     // A resting palm barely moves, so it will never escape the slop zone.
     // A deliberate drawing touch crosses 10px quickly with no perceptible delay.
@@ -324,11 +338,20 @@
   function toast(t){const x=$('#toast');x.textContent=t;x.classList.add('visible');setTimeout(()=>x.classList.remove('visible'),1600)}
   function showVault(mode){const unlock=mode==='unlock';$('#vaultTitle').textContent=unlock?'Unlock MindCanvas':'Encrypt this device';$('#vaultDescription').textContent=unlock?'Enter your passphrase to decrypt local canvas data. The passphrase is never stored.':'Create a passphrase to encrypt all local canvas data. It cannot be recovered if forgotten.';$('#confirmPassphraseLabel').hidden=unlock;$('#vaultConfirmation').required=!unlock;$('#vaultSubmit').textContent=unlock?'Unlock':'Encrypt data';$('#vaultError').textContent='';$('#vaultPassphrase').value='';$('#vaultConfirmation').value='';$('#vaultDialog').dataset.mode=mode;$('#vaultDialog').showModal();setTimeout(()=>$('#vaultPassphrase').focus(),0)}
   async function submitVault(event){event.preventDefault();const passphrase=$('#vaultPassphrase').value,mode=$('#vaultDialog').dataset.mode,error=$('#vaultError');error.textContent='';if(passphrase.length<12){error.textContent='Use a passphrase of at least 12 characters.';return}try{if(mode==='unlock'){const envelope=JSON.parse(localStorage.getItem(VAULT_KEY));const salt=base64ToBytes(envelope.salt),key=await deriveKey(passphrase,salt),data=await decryptPayload(envelope,key);state.vault={enabled:true,key,salt};state.objects=data.objects||[];state.camera=data.camera||state.camera;state.snapshots=data.snapshots||[];state.undone=[];rebakeOffscreen();persist();render();$('#vaultDialog').close();toast('Local vault unlocked');return}if(passphrase!==$('#vaultConfirmation').value){error.textContent='Passphrases do not match.';return}const salt=crypto.getRandomValues(new Uint8Array(16)),key=await deriveKey(passphrase,salt);state.vault={enabled:true,key,salt};const payload=JSON.stringify({objects:state.objects,camera:state.camera,snapshots:state.snapshots});localStorage.setItem(VAULT_KEY,JSON.stringify(await encryptPayload(payload,key,salt)));localStorage.removeItem(KEY);localStorage.removeItem(SNAP_KEY);$('#vaultDialog').close();persist();toast('Local data encrypted')}catch{error.textContent='Could not unlock this vault. Check the passphrase and try again.'}}
-  async function boot(){const encrypted=localStorage.getItem(VAULT_KEY);if(encrypted){state.vault.enabled=true;updateVaultButton();showVault('unlock');return}try{const saved=JSON.parse(localStorage.getItem(KEY));if(saved){state.objects=saved.objects||[];state.camera=saved.camera||state.camera}state.snapshots=JSON.parse(localStorage.getItem(SNAP_KEY))||[]}catch{}rebakeOffscreen();persist();render()}
+  async function boot(){const encrypted=localStorage.getItem(VAULT_KEY);if(encrypted){state.vault.enabled=true;updateVaultButton();showVault('unlock');return}try{const saved=JSON.parse(localStorage.getItem(KEY));if(saved){state.objects=saved.objects||[];state.camera=saved.camera||state.camera}state.snapshots=JSON.parse(localStorage.getItem(SNAP_KEY))||[]}catch{}rebakeOffscreen();persist();render();updateStylusOnlyButton()}
   function styleSelection(changes){if(!state.selected.size)return;state.selected.forEach(i=>Object.assign(state.objects[i],changes));rebakeOffscreen();persist();render()}
   async function importCanvas(file){try{const data=JSON.parse(await file.text());if(!Array.isArray(data.objects))throw Error();if(!confirm(`Replace this canvas with ${data.objects.length} imported objects? A snapshot of the current canvas will be saved first.`))return;snapshot();state.objects=data.objects;state.camera=data.camera||{x:0,y:0,zoom:1};state.undone=[];state.selected.clear();rebakeOffscreen();persist();render();toast('Canvas imported')}catch{toast('That file is not a valid MindCanvas JSON export')}}
   document.querySelectorAll('.tool').forEach(b=>b.onclick=()=>tool(b.dataset.tool));$('#colorInput').oninput=e=>{state.color=e.target.value;styleSelection({color:state.color})};$('#sizeInput').oninput=e=>{state.size=+e.target.value;$('#sizeOutput').textContent=state.size;styleSelection({size:state.size})};$('#shapeInput').oninput=e=>state.shape=e.target.value;$('#importButton').onclick=()=>$('#importInput').click();$('#importInput').onchange=e=>{if(e.target.files[0])importCanvas(e.target.files[0]);e.target.value=''};$('#undoButton').onclick=()=>{if(state.objects.length){state.undone.push(state.objects.pop());rebakeOffscreen();persist();render()}};$('#redoButton').onclick=()=>{if(state.undone.length){state.objects.push(state.undone.pop());rebakeOffscreen();persist();render()}};$('#clearButton').onclick=()=>{if(state.objects.length&&confirm('Clear everything on this canvas?')){state.undone.push(...state.objects);state.objects=[];rebakeOffscreen();persist();render();toast('Canvas cleared')}};$('#homeButton').onclick=()=>{state.camera={x:0,y:0,zoom:1};rebakeOffscreen();persist();render()};$('#zoomIn').onclick=()=>zoom(1.2);$('#zoomOut').onclick=()=>zoom(1/1.2);$('#zoomLabel').onclick=()=>{state.camera.zoom=1;rebakeOffscreen();persist();render()};
   $('#exportButton').onclick=()=>{const m=$('#exportOptions');m.hidden=!m.hidden};document.querySelectorAll('[data-export]').forEach(b=>b.onclick=()=>{state.exportType=b.dataset.export;$('#exportOptions').hidden=true;$('#exportDialog').showModal()});$('#confirmExport').onclick=e=>{e.preventDefault();runExport();$('#exportDialog').close()};$('#shareButton').onclick=()=>$('#shareDialog').showModal();$('#generateShare').onclick=e=>{e.preventDefault();const opts={permission:document.querySelector('[name="permission"]:checked').value,downloadDisabled:$('#downloadDisabled').checked,password:!!$('#sharePassword').value,expiry:$('#shareExpiry').value||'none'};const token=crypto.randomUUID().replaceAll('-','').slice(0,16),out=$('#shareResult');out.hidden=false;out.textContent=`mindcanvas://share/${token} (${opts.permission}; password: ${opts.password?'set':'none'}; expires: ${opts.expiry})`;toast('Local share configuration created')};$('#historyButton').onclick=()=>{timeline();$('#historyDialog').showModal()};$('#snapshotButton').onclick=e=>{e.preventDefault();snapshot()};$('#vaultButton').onclick=()=>{if(!state.vault.enabled)showVault('create');else if(state.vault.key){state.vault.key=null;updateVaultButton();toast('Vault locked in this tab')}else showVault('unlock')};$('#shortcutsButton').onclick=()=>$('#shortcutsDialog').showModal();$('#vaultClose').onclick=$('#vaultCancel').onclick=()=>$('#vaultDialog').close();$('#vaultDialog form').addEventListener('submit',submitVault);$('#accessibilityButton').onclick=()=>{document.body.classList.toggle('high-contrast');document.body.classList.toggle('large-cursor');toast(document.body.classList.contains('high-contrast')?'High contrast and large cursor on':'Accessibility display reset')};
+  // --- Stylus Only toggle ---
+  $('#stylusOnlyButton').onclick=()=>{
+    state.stylusOnly=!state.stylusOnly
+    localStorage.setItem('mc-stylus-only', state.stylusOnly?'1':'0')
+    // Clear any in-progress touch gesture so it can't leave a stray mark on mode switch
+    state.touchSlop=null;state.drawing=null;state.pan=null
+    updateStylusOnlyButton()
+    toast(state.stylusOnly ? 'Stylus Only — touch pans only' : 'Touch drawing enabled')
+  }
   addEventListener('keydown',e=>{if(e.target.isContentEditable||e.target.matches('input, textarea, select'))return;const mod=e.ctrlKey||e.metaKey,key=e.key.toLowerCase();if(mod&&key==='z'){e.preventDefault();e.shiftKey?$('#redoButton').click():$('#undoButton').click();return}if(mod&&key==='d'){e.preventDefault();if(state.selected.size){const copies=[...state.selected].map(i=>{const o=clone(state.objects[i]);if(o.type==='text'){o.x+=16;o.y+=16}else if(o.type==='shape'){o.start.x+=16;o.start.y+=16;o.end.x+=16;o.end.y+=16}else o.points.forEach(p=>{p.x+=16;p.y+=16});return o});const start=state.objects.length;state.objects.push(...copies);state.selected=new Set(copies.map((_,i)=>start+i));persist();render();toast('Selection duplicated')}return}if(mod&&key==='s'){e.preventDefault();snapshot();return}if(mod&&key==='e'){e.preventDefault();$('#exportDialog').showModal();return}if(e.key==='?'|| (e.shiftKey&&e.key==='/')){$('#shortcutsDialog').showModal();return}if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();deleteSelection();return}if(e.key==='+ '||e.key==='+'){zoom(1.2);return}if(e.key==='-'||e.key==='_'){zoom(1/1.2);return}if(e.key==='0'){state.camera.zoom=1;persist();render();return}if(e.key===' '){tool('hand');e.preventDefault();return}const keys={p:'pen',b:'brush',h:'highlighter',t:'text',r:'shape',e:'eraser',v:'lasso'};if(keys[key])tool(keys[key])});
   resize();addEventListener('resize',resize);boot();
 })();

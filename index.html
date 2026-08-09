@@ -60,6 +60,14 @@
         <label class="setting"><span>Color</span><input id="colorInput" type="color" value="#171717" /></label>
         <label class="setting"><span>Size</span><input id="sizeInput" type="range" min="1" max="36" value="4" /><output id="sizeOutput">4</output></label>
         <label class="setting"><span>Shape</span><select id="shapeInput" aria-label="Shape type"><option value="line">Line</option><option value="rectangle">Box</option><option value="ellipse">Oval</option></select></label>
+        <!-- Stylus Only toggle: when active touch pans only, pen draws -->
+        <button id="stylusOnlyButton" class="icon-button stylus-only-btn" aria-pressed="false" title="Stylus Only OFF — touch can draw (tap to enable)">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M11 1.5L14.5 5L5.5 14L1.5 14.5L2 10.5L11 1.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+            <path d="M9.5 3L13 6.5" stroke="currentColor" stroke-width="1.4"/>
+          </svg>
+          <span class="stylus-label">Pen Only</span>
+        </button>
         <button id="accessibilityButton" class="icon-button" title="Accessibility settings" aria-label="Accessibility settings">Aa</button>
       </aside>
 
