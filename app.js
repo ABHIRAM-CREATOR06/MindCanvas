@@ -8,6 +8,11 @@
   const offscreen = document.createElement('canvas'), offCtx = offscreen.getContext('2d');
   const KEY = 'mindcanvas-v2', SNAP_KEY = 'mindcanvas-snapshots-v1', VAULT_KEY = 'mindcanvas-vault-v1';
   const state = { objects: [], undone: [], snapshots: [], camera: { x: 0, y: 0, zoom: 1 }, tool: 'pen', color: '#171717', size: 4, shape: 'line', drawing: null, pan: null, moving: null, selected: new Set(), exportType: 'png', vault: { enabled: false, key: null }, writeChain: Promise.resolve(), stylusUntil: 0, ignoredPointers: new Set(), activeDrawPointer: null, pinch: null, barrelPan: null, touchSlop: null, rafPending: false, stylusOnly: localStorage.getItem('mc-stylus-only')==='1' };
+  // Palm-guard window: how long after the pen was last seen (hover or contact) that
+  // touch stays distrusted. Tuned generous because natural pauses between words/strokes
+  // — lift pen, reposition writing hand, rest palm again — commonly run 2-4s, not <1s.
+  const GUARD_MS = { normal: 1800, stylus: 4000 }
+  function guardWindow(){ return state.stylusOnly ? GUARD_MS.stylus : GUARD_MS.normal }
   // RAF guard: coalesce all event-driven renders into one rAF callback per frame
   function scheduleRender(){
     if(state.rafPending)return
@@ -112,7 +117,7 @@
     // --- Stylus / pen ---
     if(e.pointerType==='pen'){
       // Stamp suppression: longer window in Stylus Mode
-      state.stylusUntil=Date.now()+(state.stylusOnly?2500:1400)
+      state.stylusUntil=Date.now()+guardWindow()
       return false // never ignore the pen itself
     }
     if(e.pointerType!=='touch')return false
@@ -154,7 +159,7 @@
     // =====================================================================
     if(e.pointerType==='pen'){
       // Pen just touched down: extend guard window
-      state.stylusUntil=Date.now()+(state.stylusOnly?2500:1400)
+      state.stylusUntil=Date.now()+guardWindow()
       // Force-cancel any in-progress touch gesture so pen always wins
       if(state.stylusOnly){
         if(state.touchSlop){
@@ -175,13 +180,15 @@
         state.ignoredPointers.add(e.pointerId)
         return // completely eaten — not even pan, mirrors Samsung Notes
       }
-      // Guard expired: pen hasn't been near for >2500ms
-      // Allow touch, but ONLY for pan — it can never reach drawing code
+      // Guard expired: pen hasn't been near for a while. Don't trust this touch
+      // yet — a resting palm during repositioning looks identical to a pan-start
+      // at pointerdown. Hold it in slop like a real touch gesture: only graduate
+      // to an actual pan once it moves decisively (handled in pointermove below).
       canvas.setPointerCapture(e.pointerId)
       state.activeDrawPointer=e.pointerId
       const p=mouse(e)
       state._lastPos=p
-      state.pan={p,c:{...state.camera}}
+      state.touchSlop={px:p.x,py:p.y,w:world(p),tool:'hand'}
       return
     }
 
@@ -229,7 +236,7 @@
         drawHoverCursor(p.x,p.y)
         // KEY: hover extends guard even before pen touches — this is the Samsung Notes
         // proximity mechanism. If the pen is anywhere near the screen, touch is blocked.
-        if(state.stylusOnly) state.stylusUntil=Date.now()+(state.stylusOnly?2500:1400)
+        if(state.stylusOnly) state.stylusUntil=Date.now()+guardWindow()
         if(state.drawing||state.pan||state.moving){
           state.drawing=null;state.pan=null;state.moving=null
           if(state.activeDrawPointer===e.pointerId)state.activeDrawPointer=null
@@ -239,7 +246,7 @@
       }
       // Pen actively drawing: extend guard on every move event
       clearHoverCursor()
-      state.stylusUntil=Date.now()+(state.stylusOnly?2500:1400)
+      state.stylusUntil=Date.now()+guardWindow()
     }
     // --- Continuous palm-area monitoring for touch:
     // The browser often reports a small initial contact area that grows as the palm settles.
@@ -331,7 +338,7 @@
     // Barrel pan release
     if(state.barrelPan&&e.pointerType==='pen'){state.barrelPan=null;persist();return}
     if(state.ignoredPointers.has(e.pointerId)){releasePointer(e.pointerId);return}
-    if(e.pointerType==='pen')state.stylusUntil=Date.now()+1400
+    if(e.pointerType==='pen')state.stylusUntil=Date.now()+guardWindow()
     // Pinch release: if one of the two pinch fingers lifts, end pinch
     if(state.pinch){
       state.pinch=null
