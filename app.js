@@ -109,18 +109,19 @@
     return (w>=30&&h>=30)||(w*h>800)
   }
   function ignorePalm(e){
-    // Stylus (pen) — never ignore, but stamp the suppression window aggressively
-    if(e.pointerType==='pen'){state.stylusUntil=Date.now()+1400;return false}
-    // Everything below is touch
+    // --- Stylus / pen ---
+    if(e.pointerType==='pen'){
+      // Stamp suppression: longer window in Stylus Mode
+      state.stylusUntil=Date.now()+(state.stylusOnly?2500:1400)
+      return false // never ignore the pen itself
+    }
     if(e.pointerType!=='touch')return false
-    // A second finger while a pinch is active is handled by pinch logic, not ignored
     if(state.pinch)return false
-    // A second finger while we already own a drawing pointer → handled in pointerdown
     if(state.activeDrawPointer!==null&&state.activeDrawPointer!==e.pointerId)return false
-    // Large contact area at landing = palm.  Use original 40×40 threshold at pointerdown.
+    // In Stylus Mode: lower contact-area threshold (20×20) for more sensitive palm detection
     const w=e.width||0,h=e.height||0
-    if((w>=40&&h>=40)||(w*h>1000))return true
-    // Stylus was used recently → suppress rogue touch
+    const areaThresh = state.stylusOnly ? (w>=20&&h>=20)||(w*h>400) : (w>=40&&h>=40)||(w*h>1000)
+    if(areaThresh)return true
     if(Date.now()<state.stylusUntil)return true
     return false
   }
@@ -129,8 +130,8 @@
     const btn=$('#stylusOnlyButton')
     btn.classList.toggle('active', state.stylusOnly)
     btn.title = state.stylusOnly
-      ? 'Stylus Only ON — touch pans only (tap to disable)'
-      : 'Stylus Only OFF — touch can draw (tap to enable)'
+      ? 'Stylus Mode ON — S Pen only, touch completely blocked near pen (tap to disable)'
+      : 'Stylus Mode OFF — touch can draw (tap to enable)'
     btn.setAttribute('aria-pressed', state.stylusOnly)
   }
   canvas.addEventListener('pointerdown',e=>{
@@ -141,19 +142,55 @@
       return
     }
     if(e.button!==0)return
-    // Pen hover: buttons===0 or primary button not held, or zero pressure → reject
+    // Pen hover: no button held or zero pressure → reject contact
     if(e.pointerType==='pen'&&(!(e.buttons&1)||e.pressure===0))return
     clearHoverCursor()
+
+    // =====================================================================
+    // STYLUS GUARD — Samsung Notes-style aggressive palm rejection
+    // Runs before pinch check and before ignorePalm so there are no escape
+    // hatches. In Stylus Mode, touch is completely blocked whenever the pen
+    // is nearby or was recently used (stylusUntil not yet expired).
+    // =====================================================================
+    if(e.pointerType==='pen'){
+      // Pen just touched down: extend guard window
+      state.stylusUntil=Date.now()+(state.stylusOnly?2500:1400)
+      // Force-cancel any in-progress touch gesture so pen always wins
+      if(state.stylusOnly){
+        if(state.touchSlop){
+          state.touchSlop=null
+          // The touch that was in slop is still in ignoredPointers from its own
+          // pointerdown if it was flagged; otherwise add activeDrawPointer
+          if(state.activeDrawPointer!==null&&state.activeDrawPointer!==e.pointerId){
+            state.ignoredPointers.add(state.activeDrawPointer)
+            state.activeDrawPointer=null
+          }
+        }
+        state.drawing=null;state.pan=null;state.moving=null
+      }
+    }
+    if(e.pointerType==='touch'&&state.stylusOnly){
+      // Guard active: pen was detected recently (hover or contact) → hard-block
+      if(Date.now()<state.stylusUntil){
+        state.ignoredPointers.add(e.pointerId)
+        return // completely eaten — not even pan, mirrors Samsung Notes
+      }
+      // Guard expired: pen hasn't been near for >2500ms
+      // Allow touch, but ONLY for pan — it can never reach drawing code
+      canvas.setPointerCapture(e.pointerId)
+      state.activeDrawPointer=e.pointerId
+      const p=mouse(e)
+      state._lastPos=p
+      state.pan={p,c:{...state.camera}}
+      return
+    }
+
     // --- Pinch-to-zoom: second touch finger while first is already active ---
     if(e.pointerType==='touch'&&state.activeDrawPointer!==null&&state.activeDrawPointer!==e.pointerId){
-      // Only allow pinch if the first pointer is also touch (not pen)
       canvas.setPointerCapture(e.pointerId)
-      const p1=state.pinch?.p1||{x:0,y:0} // we'll fill from existing move state
       const p2=mouse(e)
-      // Grab the first pointer's current position from the draw state's last known point
       const firstPos=state._lastPos||p2
       state.pinch={p1:firstPos,p2,dist:Math.hypot(p2.x-firstPos.x,p2.y-firstPos.y),camSnap:{...state.camera},mid:{x:(p2.x+firstPos.x)/2,y:(p2.y+firstPos.y)/2}}
-      // Freeze any in-progress drawing stroke (don't commit it — discard)
       state.drawing=null;state.pan=null;state.moving=null
       return
     }
@@ -164,12 +201,6 @@
     state._lastPos=p
     if(state.tool==='hand'||e.shiftKey){state.pan={p,c:{...state.camera}};return}
     if(state.tool==='text')return editor(p,w)
-    // --- Stylus Only mode: touch events skip drawing entirely and become pans.
-    // This is the most reliable palm/finger rejection — zero heuristics, zero false positives.
-    if(state.stylusOnly && e.pointerType==='touch'){
-      state.pan={p,c:{...state.camera}}
-      return
-    }
     // --- Touch slop: don't commit a stroke/erase/lasso immediately for touch events.
     // A resting palm barely moves, so it will never escape the slop zone.
     // A deliberate drawing touch crosses 10px quickly with no perceptible delay.
@@ -193,9 +224,12 @@
       return render()
     }
     if(e.pointerType==='pen'){
-      // Pen lifted (hover) or zero pressure → show hover cursor, cancel any active gesture
+      // Pen hover (lifted above surface) or zero pressure
       if(!(e.buttons&1)||e.pressure===0){
         drawHoverCursor(p.x,p.y)
+        // KEY: hover extends guard even before pen touches — this is the Samsung Notes
+        // proximity mechanism. If the pen is anywhere near the screen, touch is blocked.
+        if(state.stylusOnly) state.stylusUntil=Date.now()+(state.stylusOnly?2500:1400)
         if(state.drawing||state.pan||state.moving){
           state.drawing=null;state.pan=null;state.moving=null
           if(state.activeDrawPointer===e.pointerId)state.activeDrawPointer=null
@@ -203,8 +237,9 @@
         }
         return
       }
+      // Pen actively drawing: extend guard on every move event
       clearHoverCursor()
-      state.stylusUntil=Date.now()+1400
+      state.stylusUntil=Date.now()+(state.stylusOnly?2500:1400)
     }
     // --- Continuous palm-area monitoring for touch:
     // The browser often reports a small initial contact area that grows as the palm settles.
