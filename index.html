@@ -96,12 +96,12 @@
       </dialog>
       <dialog id="vaultDialog">
         <form method="dialog" class="dialog-card">
-          <header><h2 id="vaultTitle">Encrypt this device</h2><button class="close-button" value="cancel" aria-label="Close">×</button></header>
+          <header><h2 id="vaultTitle">Encrypt this device</h2><button id="vaultClose" class="close-button" type="button" aria-label="Close">×</button></header>
           <p id="vaultDescription">Create a passphrase to encrypt all local canvas data. It cannot be recovered if forgotten.</p>
           <label class="modal-field">Passphrase <input id="vaultPassphrase" type="password" autocomplete="new-password" minlength="12" required /></label>
           <label id="confirmPassphraseLabel" class="modal-field">Confirm <input id="vaultConfirmation" type="password" autocomplete="new-password" minlength="12" required /></label>
           <p id="vaultError" class="form-error" role="alert"></p>
-          <footer><button value="cancel">Cancel</button><button id="vaultSubmit" class="primary" value="default">Encrypt data</button></footer>
+          <footer><button id="vaultCancel" type="button">Cancel</button><button id="vaultSubmit" class="primary" value="default">Encrypt data</button></footer>
         </form>
       </dialog>
       <dialog id="shortcutsDialog">
