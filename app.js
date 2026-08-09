@@ -3,7 +3,7 @@
   // Overlay canvas for S Pen hover cursor — sits on top of the drawing canvas
   const overlay = document.getElementById('overlay'), octx = overlay.getContext('2d');
   const KEY = 'mindcanvas-v2', SNAP_KEY = 'mindcanvas-snapshots-v1', VAULT_KEY = 'mindcanvas-vault-v1';
-  const state = { objects: [], undone: [], snapshots: [], camera: { x: 0, y: 0, zoom: 1 }, tool: 'pen', color: '#171717', size: 4, shape: 'line', drawing: null, pan: null, moving: null, selected: new Set(), exportType: 'png', vault: { enabled: false, key: null }, writeChain: Promise.resolve(), stylusUntil: 0, ignoredPointers: new Set(), activeDrawPointer: null, pinch: null, barrelPan: null };
+  const state = { objects: [], undone: [], snapshots: [], camera: { x: 0, y: 0, zoom: 1 }, tool: 'pen', color: '#171717', size: 4, shape: 'line', drawing: null, pan: null, moving: null, selected: new Set(), exportType: 'png', vault: { enabled: false, key: null }, writeChain: Promise.resolve(), stylusUntil: 0, ignoredPointers: new Set(), activeDrawPointer: null, pinch: null, barrelPan: null, touchSlop: null };
   const screen = (p) => ({x:p.x * state.camera.zoom + state.camera.x,y:p.y * state.camera.zoom + state.camera.y});
   const screenFor = (p, camera) => ({x:p.x * camera.zoom + camera.x,y:p.y * camera.zoom + camera.y});
   const world = (p) => ({x:(p.x - state.camera.x) / state.camera.zoom,y:(p.y - state.camera.y) / state.camera.zoom});
@@ -48,6 +48,12 @@
     octx.fillStyle='rgba(0,0,0,0.7)';octx.fill()
   }
   function clearHoverCursor(){octx.clearRect(0,0,overlay.width,overlay.height)}
+  function isPalmContact(e){
+    const w=e.width||0,h=e.height||0
+    // Lower threshold for mid-stroke monitoring (30×30 or area>800)
+    // because a palm that landed with small initial area will have grown by now
+    return (w>=30&&h>=30)||(w*h>800)
+  }
   function ignorePalm(e){
     // Stylus (pen) — never ignore, but stamp the suppression window aggressively
     if(e.pointerType==='pen'){state.stylusUntil=Date.now()+1400;return false}
@@ -55,9 +61,9 @@
     if(e.pointerType!=='touch')return false
     // A second finger while a pinch is active is handled by pinch logic, not ignored
     if(state.pinch)return false
-    // A second finger while we already own a drawing pointer → check for pinch opportunity
-    if(state.activeDrawPointer!==null&&state.activeDrawPointer!==e.pointerId)return false // handled in pointerdown
-    // Large contact area = palm.  40×40 px threshold, or area > 1000 sq-px
+    // A second finger while we already own a drawing pointer → handled in pointerdown
+    if(state.activeDrawPointer!==null&&state.activeDrawPointer!==e.pointerId)return false
+    // Large contact area at landing = palm.  Use original 40×40 threshold at pointerdown.
     const w=e.width||0,h=e.height||0
     if((w>=40&&h>=40)||(w*h>1000))return true
     // Stylus was used recently → suppress rogue touch
@@ -95,8 +101,16 @@
     const p=mouse(e),w=world(p)
     state._lastPos=p
     if(state.tool==='hand'||e.shiftKey){state.pan={p,c:{...state.camera}};return}
-    if(state.tool==='eraser')return erase(w)
     if(state.tool==='text')return editor(p,w)
+    // --- Touch slop: don't commit a stroke/erase/lasso immediately for touch events.
+    // A resting palm barely moves, so it will never escape the slop zone.
+    // A deliberate drawing touch crosses 10px quickly with no perceptible delay.
+    if(e.pointerType==='touch'){
+      state.touchSlop={px:p.x,py:p.y,w,tool:state.tool}
+      return
+    }
+    // Pen: start gesture immediately (no slop needed, pen was validated above)
+    if(state.tool==='eraser')return erase(w)
     if(state.tool==='lasso'){const hit=objectAt(w);if(hit>=0&&state.selected.has(hit)){state.moving={at:w,objects:[...state.selected]};return}state.drawing={type:'lasso',start:p,end:p};return render()}
     if(state.tool==='shape'){state.drawing={type:'shape',shape:state.shape,color:state.color,size:state.size,start:w,end:w};return}
     state.drawing={type:'stroke',tool:state.tool,color:state.color,size:state.size,points:[w]}
@@ -123,6 +137,31 @@
       }
       clearHoverCursor()
       state.stylusUntil=Date.now()+1400
+    }
+    // --- Continuous palm-area monitoring for touch:
+    // The browser often reports a small initial contact area that grows as the palm settles.
+    // If a touch that got through pointerdown now looks like a palm, cancel it.
+    if(e.pointerType==='touch'&&e.pointerId===state.activeDrawPointer&&isPalmContact(e)){
+      state.touchSlop=null
+      state.drawing=null;state.pan=null;state.moving=null
+      state.ignoredPointers.add(e.pointerId)
+      state.activeDrawPointer=null
+      render()
+      return
+    }
+    // --- Touch slop graduation: start the actual gesture once the finger has moved >=10px ---
+    if(state.touchSlop&&e.pointerId===state.activeDrawPointer){
+      const dx=p.x-state.touchSlop.px,dy=p.y-state.touchSlop.py
+      if(Math.hypot(dx,dy)<10)return // still inside slop zone, do nothing
+      // Graduated — now start the real gesture from the original touch-down world position
+      const slop=state.touchSlop;state.touchSlop=null
+      const sw=slop.w // world-space start position
+      if(slop.tool==='hand'){state.pan={p:{x:slop.px,y:slop.py},c:{...state.camera}};}
+      else if(slop.tool==='eraser'){erase(sw)}
+      else if(slop.tool==='lasso'){const hit=objectAt(sw);if(hit>=0&&state.selected.has(hit)){state.moving={at:sw,objects:[...state.selected]}}else{state.drawing={type:'lasso',start:{x:slop.px,y:slop.py},end:{x:slop.px,y:slop.py}}}}
+      else if(slop.tool==='shape'){state.drawing={type:'shape',shape:state.shape,color:state.color,size:state.size,start:sw,end:sw}}
+      else{state.drawing={type:'stroke',tool:slop.tool,color:state.color,size:state.size,points:[sw]}}
+      // fall through to continue processing this move event normally
     }
     // --- Pinch-to-zoom + pan ---
     if(state.pinch){
@@ -177,6 +216,8 @@
       return render()
     }
     releasePointer(e.pointerId)
+    // If finger lifted before crossing the slop threshold, treat as tap — no stroke
+    if(state.touchSlop){state.touchSlop=null;return}
     if(state.pan){state.pan=null;persist();return}
     if(state.moving){state.moving=null;persist();return}
     if(!state.drawing)return
@@ -191,6 +232,7 @@
   canvas.addEventListener('pointercancel',e=>{
     if(state.pinch)state.pinch=null
     state.barrelPan=null
+    state.touchSlop=null
     releasePointer(e.pointerId)
     state.drawing=null;state.pan=null;state.moving=null
     render()
