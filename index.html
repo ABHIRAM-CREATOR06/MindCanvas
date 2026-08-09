@@ -27,6 +27,7 @@
           <button id="historyButton" title="Snapshots and timeline">History</button>
           <button id="vaultButton" title="Encrypt local canvas data">Lock</button>
           <button id="shareButton" title="Prepare a private share link">Share</button>
+          <button id="shortcutsButton" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
           <div class="export-menu">
             <button id="exportButton" aria-expanded="false">Export</button>
             <div id="exportOptions" class="menu" hidden>
@@ -101,6 +102,24 @@
           <label id="confirmPassphraseLabel" class="modal-field">Confirm <input id="vaultConfirmation" type="password" autocomplete="new-password" minlength="12" required /></label>
           <p id="vaultError" class="form-error" role="alert"></p>
           <footer><button value="cancel">Cancel</button><button id="vaultSubmit" class="primary" value="default">Encrypt data</button></footer>
+        </form>
+      </dialog>
+      <dialog id="shortcutsDialog">
+        <form method="dialog" class="dialog-card">
+          <header><h2>Keyboard shortcuts</h2><button class="close-button" value="cancel" aria-label="Close">×</button></header>
+          <div class="shortcuts-list">
+            <div><span><kbd>P</kbd>, <kbd>B</kbd>, <kbd>H</kbd></span><span>Pen, brush, highlighter</span></div>
+            <div><span><kbd>T</kbd>, <kbd>E</kbd>, <kbd>V</kbd></span><span>Text, erase, select</span></div>
+            <div><span><kbd>Space</kbd> or <kbd>Shift</kbd> + drag</span><span>Pan canvas</span></div>
+            <div><span><kbd>⌘/Ctrl</kbd> + <kbd>Z</kbd></span><span>Undo</span></div>
+            <div><span><kbd>⌘/Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd></span><span>Redo</span></div>
+            <div><span><kbd>⌘/Ctrl</kbd> + <kbd>S</kbd></span><span>Save snapshot</span></div>
+            <div><span><kbd>⌘/Ctrl</kbd> + <kbd>E</kbd></span><span>Export</span></div>
+            <div><span><kbd>+</kbd> / <kbd>−</kbd> / <kbd>0</kbd></span><span>Zoom in, out, reset</span></div>
+            <div><span><kbd>Delete</kbd> / <kbd>Backspace</kbd></span><span>Delete selected objects</span></div>
+            <div><span><kbd>?</kbd></span><span>Show this guide</span></div>
+          </div>
+          <footer><button value="cancel" class="primary">Done</button></footer>
         </form>
       </dialog>
     </main>
