@@ -1,13 +1,13 @@
 (() => {
   const $ = (s) => document.querySelector(s), canvas = $('#canvas'), ctx = canvas.getContext('2d');
   const KEY = 'mindcanvas-v2', SNAP_KEY = 'mindcanvas-snapshots-v1', VAULT_KEY = 'mindcanvas-vault-v1';
-  const state = { objects: [], undone: [], snapshots: [], camera: { x: 0, y: 0, zoom: 1 }, tool: 'pen', color: '#171717', size: 4, shape: 'line', drawing: null, pan: null, moving: null, selected: new Set(), exportType: 'png', vault: { enabled: false, key: null }, writeChain: Promise.resolve(), stylusUntil: 0, ignoredPointers: new Set() };
+  const state = { objects: [], undone: [], snapshots: [], camera: { x: 0, y: 0, zoom: 1 }, tool: 'pen', color: '#171717', size: 4, shape: 'line', drawing: null, pan: null, moving: null, selected: new Set(), exportType: 'png', vault: { enabled: false, key: null }, writeChain: Promise.resolve(), stylusUntil: 0, ignoredPointers: new Set(), activeDrawPointer: null };
   const screen = (p) => ({x:p.x * state.camera.zoom + state.camera.x,y:p.y * state.camera.zoom + state.camera.y});
   const screenFor = (p, camera) => ({x:p.x * camera.zoom + camera.x,y:p.y * camera.zoom + camera.y});
   const world = (p) => ({x:(p.x - state.camera.x) / state.camera.zoom,y:(p.y - state.camera.y) / state.camera.zoom});
   const mouse = (e) => ({x:e.clientX,y:e.clientY});
   const clone = (x) => JSON.parse(JSON.stringify(x));
-  function resize(){const r=devicePixelRatio||1;canvas.width=innerWidth*r;canvas.height=innerHeight*r;canvas.style.width=innerWidth+'px';canvas.style.height=innerHeight+'px';ctx.setTransform(r,0,0,r,0,0);render()}
+  function resize(){const r=devicePixelRatio||1;canvas.width=innerWidth*r;canvas.height=innerHeight*r;canvas.style.width=innerWidth+'px';canvas.style.height=innerHeight+'px';canvas.style.touchAction='none';ctx.setTransform(r,0,0,r,0,0);render()}
   function bounds(o){if(o.type==='text')return{x:o.x,y:o.y-o.size,w:o.text.length*o.size*.58,h:o.size*1.3};if(o.type==='shape')return{x:Math.min(o.start.x,o.end.x)-o.size,y:Math.min(o.start.y,o.end.y)-o.size,w:Math.abs(o.end.x-o.start.x)+2*o.size,h:Math.abs(o.end.y-o.start.y)+2*o.size};const xs=o.points.map(p=>p.x),ys=o.points.map(p=>p.y);return{x:Math.min(...xs)-o.size,y:Math.min(...ys)-o.size,w:Math.max(...xs)-Math.min(...xs)+2*o.size,h:Math.max(...ys)-Math.min(...ys)+2*o.size}}
   function isVisible(o){const b=bounds(o),z=state.camera.zoom;return b.x*z+state.camera.x<innerWidth+32 && (b.x+b.w)*z+state.camera.x>-32 && b.y*z+state.camera.y<innerHeight+32 && (b.y+b.h)*z+state.camera.y>-32}
   function grid(){const gap=32*state.camera.zoom;if(gap<12)return;ctx.beginPath();ctx.strokeStyle='#ebeae5';ctx.lineWidth=1;for(let x=state.camera.x%gap;x<innerWidth;x+=gap){ctx.moveTo(x,0);ctx.lineTo(x,innerHeight)}for(let y=state.camera.y%gap;y<innerHeight;y+=gap){ctx.moveTo(0,y);ctx.lineTo(innerWidth,y)}ctx.stroke()}
@@ -26,11 +26,79 @@
   function objectAt(p){for(let i=state.objects.length-1;i>=0;i--){let b=bounds(state.objects[i]);if(p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h)return i}return -1}
   function deleteSelection(){if(!state.selected.size)return;const chosen=[...state.selected].sort((a,b)=>b-a);chosen.forEach(i=>state.undone.push(state.objects.splice(i,1)[0]));state.selected.clear();persist();render();toast('Selection deleted')}
   function erase(p){const i=objectAt(p);if(i>=0){state.undone.push(state.objects.splice(i,1)[0]);persist();render()}}
-  function ignorePalm(e){if(e.pointerType==='pen'){state.stylusUntil=Date.now()+900;return false}return e.pointerType==='touch'&&((e.width>=34&&e.height>=34)||Date.now()<state.stylusUntil)}
+  function ignorePalm(e){
+    // Stylus (pen) — never ignore, but stamp the suppression window aggressively
+    if(e.pointerType==='pen'){state.stylusUntil=Date.now()+1400;return false}
+    // Everything below is touch
+    if(e.pointerType!=='touch')return false
+    // A second finger while we already own a drawing pointer → always ignore
+    if(state.activeDrawPointer!==null&&state.activeDrawPointer!==e.pointerId)return true
+    // Large contact area = palm.  40×40 px threshold, or area > 1000 sq-px
+    const w=e.width||0,h=e.height||0
+    if((w>=40&&h>=40)||(w*h>1000))return true
+    // Stylus was used recently → suppress rogue touch
+    if(Date.now()<state.stylusUntil)return true
+    return false
+  }
   function selectBox(a,b){state.selected.clear();state.objects.forEach((o,i)=>{let q=bounds(o);if(q.x+q.w>=a.x&&q.x<=b.x&&q.y+q.h>=a.y&&q.y<=b.y)state.selected.add(i)});render()}
-  canvas.addEventListener('pointerdown',e=>{if(e.button!==0||(e.pointerType==='pen'&&!(e.buttons&1)))return;if(ignorePalm(e)){state.ignoredPointers.add(e.pointerId);return}canvas.setPointerCapture(e.pointerId);const p=mouse(e),w=world(p);if(state.tool==='hand'||e.shiftKey){state.pan={p,c:{...state.camera}};return}if(state.tool==='eraser')return erase(w);if(state.tool==='text')return editor(p,w);if(state.tool==='lasso'){const hit=objectAt(w);if(hit>=0&&state.selected.has(hit)){state.moving={at:w,objects:[...state.selected]};return}state.drawing={type:'lasso',start:p,end:p};return render()}if(state.tool==='shape'){state.drawing={type:'shape',shape:state.shape,color:state.color,size:state.size,start:w,end:w};return}state.drawing={type:'stroke',tool:state.tool,color:state.color,size:state.size,points:[w]}});
-  canvas.addEventListener('pointermove',e=>{if(state.ignoredPointers.has(e.pointerId))return;if(e.pointerType==='pen'){if(!(e.buttons&1)){if(state.drawing||state.pan||state.moving){state.drawing=null;state.pan=null;state.moving=null;render()}return}state.stylusUntil=Date.now()+900}const p=mouse(e);if(state.pan){state.camera.x=state.pan.c.x+p.x-state.pan.p.x;state.camera.y=state.pan.c.y+p.y-state.pan.p.y;return render()}if(state.moving){const w=world(p),dx=w.x-state.moving.at.x,dy=w.y-state.moving.at.y;state.moving.objects.forEach(i=>{const o=state.objects[i];if(o.type==='text'){o.x+=dx;o.y+=dy}else if(o.type==='shape'){o.start.x+=dx;o.start.y+=dy;o.end.x+=dx;o.end.y+=dy}else o.points.forEach(q=>{q.x+=dx;q.y+=dy})});state.moving.at=w;return render()}if(!state.drawing)return;if(state.drawing.type==='lasso'){state.drawing.end=p;return render()}if(state.drawing.type==='shape'){state.drawing.end=world(p);return render()}state.drawing.points.push(world(p));render();paint(state.drawing)});
-  canvas.addEventListener('pointerup',e=>{if(state.ignoredPointers.delete(e.pointerId))return;if(e.pointerType==='pen')state.stylusUntil=Date.now()+900;if(state.pan){state.pan=null;persist();return}if(state.moving){state.moving=null;persist();return}if(!state.drawing)return;if(state.drawing.type==='lasso'){const d=state.drawing,a=world({x:Math.min(d.start.x,d.end.x),y:Math.min(d.start.y,d.end.y)}),b=world({x:Math.max(d.start.x,d.end.x),y:Math.max(d.start.y,d.end.y)});state.drawing=null;return selectBox(a,b)}const o=state.drawing;state.drawing=null;if(o.type==='shape')return(Math.abs(o.end.x-o.start.x)+Math.abs(o.end.y-o.start.y)>2?commit(o):render());o.points.length>1?commit(o):render()});canvas.addEventListener('pointercancel',e=>state.ignoredPointers.delete(e.pointerId));
+  canvas.addEventListener('pointerdown',e=>{
+    if(e.button!==0)return
+    // Pen hover: buttons===0 or primary button not held, or zero pressure → reject
+    if(e.pointerType==='pen'&&(!(e.buttons&1)||e.pressure===0))return
+    if(ignorePalm(e)){state.ignoredPointers.add(e.pointerId);return}
+    // If another pointer is already drawing, ignore this one
+    if(state.activeDrawPointer!==null&&state.activeDrawPointer!==e.pointerId){
+      state.ignoredPointers.add(e.pointerId);return
+    }
+    canvas.setPointerCapture(e.pointerId)
+    state.activeDrawPointer=e.pointerId
+    const p=mouse(e),w=world(p)
+    if(state.tool==='hand'||e.shiftKey){state.pan={p,c:{...state.camera}};return}
+    if(state.tool==='eraser')return erase(w)
+    if(state.tool==='text')return editor(p,w)
+    if(state.tool==='lasso'){const hit=objectAt(w);if(hit>=0&&state.selected.has(hit)){state.moving={at:w,objects:[...state.selected]};return}state.drawing={type:'lasso',start:p,end:p};return render()}
+    if(state.tool==='shape'){state.drawing={type:'shape',shape:state.shape,color:state.color,size:state.size,start:w,end:w};return}
+    state.drawing={type:'stroke',tool:state.tool,color:state.color,size:state.size,points:[w]}
+  });
+  canvas.addEventListener('pointermove',e=>{
+    if(state.ignoredPointers.has(e.pointerId))return
+    if(e.pointerType==='pen'){
+      // Pen lifted (hover) or zero pressure → cancel any active gesture immediately
+      if(!(e.buttons&1)||e.pressure===0){
+        if(state.drawing||state.pan||state.moving){
+          state.drawing=null;state.pan=null;state.moving=null
+          if(state.activeDrawPointer===e.pointerId)state.activeDrawPointer=null
+          render()
+        }
+        return
+      }
+      state.stylusUntil=Date.now()+1400
+    }
+    const p=mouse(e)
+    if(state.pan){state.camera.x=state.pan.c.x+p.x-state.pan.p.x;state.camera.y=state.pan.c.y+p.y-state.pan.p.y;return render()}
+    if(state.moving){const w=world(p),dx=w.x-state.moving.at.x,dy=w.y-state.moving.at.y;state.moving.objects.forEach(i=>{const o=state.objects[i];if(o.type==='text'){o.x+=dx;o.y+=dy}else if(o.type==='shape'){o.start.x+=dx;o.start.y+=dy;o.end.x+=dx;o.end.y+=dy}else o.points.forEach(q=>{q.x+=dx;q.y+=dy})});state.moving.at=w;return render()}
+    if(!state.drawing)return
+    if(state.drawing.type==='lasso'){state.drawing.end=p;return render()}
+    if(state.drawing.type==='shape'){state.drawing.end=world(p);return render()}
+    state.drawing.points.push(world(p));render();paint(state.drawing)
+  });
+  function releasePointer(id){
+    if(state.activeDrawPointer===id)state.activeDrawPointer=null
+    state.ignoredPointers.delete(id)
+  }
+  canvas.addEventListener('pointerup',e=>{
+    if(state.ignoredPointers.has(e.pointerId)){releasePointer(e.pointerId);return}
+    if(e.pointerType==='pen')state.stylusUntil=Date.now()+1400
+    releasePointer(e.pointerId)
+    if(state.pan){state.pan=null;persist();return}
+    if(state.moving){state.moving=null;persist();return}
+    if(!state.drawing)return
+    if(state.drawing.type==='lasso'){const d=state.drawing,a=world({x:Math.min(d.start.x,d.end.x),y:Math.min(d.start.y,d.end.y)}),b=world({x:Math.max(d.start.x,d.end.x),y:Math.max(d.start.y,d.end.y)});state.drawing=null;return selectBox(a,b)}
+    const o=state.drawing;state.drawing=null
+    if(o.type==='shape')return(Math.abs(o.end.x-o.start.x)+Math.abs(o.end.y-o.start.y)>2?commit(o):render())
+    o.points.length>1?commit(o):render()
+  })
+  canvas.addEventListener('pointercancel',e=>{releasePointer(e.pointerId);state.drawing=null;state.pan=null;state.moving=null;render()})
   canvas.addEventListener('wheel',e=>{e.preventDefault();zoom(e.deltaY<0?1.12:1/1.12,mouse(e))},{passive:false});
   function editor(p,w){const e=$('#textEditor');e.style.left=p.x+'px';e.style.top=p.y+'px';e.style.fontSize=(18*state.camera.zoom)+'px';e.hidden=false;e.textContent='';e.focus();const done=()=>{const text=e.textContent.trim();e.hidden=true;if(text)commit({type:'text',x:w.x,y:w.y,color:state.color,size:18,text});e.removeEventListener('blur',done)};e.addEventListener('blur',done);e.onkeydown=x=>{if(x.key==='Escape'){e.textContent='';e.blur()}if(x.key==='Enter'&&!x.shiftKey){x.preventDefault();e.blur()}}}
   function area(){const selected=[...state.selected].map(i=>state.objects[i]).filter(Boolean);const mode=document.querySelector('[name="exportArea"]:checked').value;if(mode==='selection'&&selected.length){const bs=selected.map(bounds),x=Math.min(...bs.map(b=>b.x)),y=Math.min(...bs.map(b=>b.y)),r=Math.max(...bs.map(b=>b.x+b.w)),bt=Math.max(...bs.map(b=>b.y+b.h));return{objects:selected,camera:{x:-x+24,y:-y+24,zoom:1},w:Math.ceil(r-x+48),h:Math.ceil(bt-y+48)}}if(mode==='canvas'&&state.objects.length){const bs=state.objects.map(bounds),x=Math.min(...bs.map(b=>b.x)),y=Math.min(...bs.map(b=>b.y)),r=Math.max(...bs.map(b=>b.x+b.w)),bt=Math.max(...bs.map(b=>b.y+b.h));return{objects:state.objects,camera:{x:-x+32,y:-y+32,zoom:1},w:Math.ceil(r-x+64),h:Math.ceil(bt-y+64)}}return{objects:state.objects,camera:{x:state.camera.x,y:state.camera.y,zoom:state.camera.zoom},w:innerWidth,h:innerHeight}}
