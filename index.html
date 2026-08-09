@@ -25,6 +25,7 @@
           <span class="divider"></span>
           <button id="clearButton" title="Clear canvas">Clear</button>
           <button id="historyButton" title="Snapshots and timeline">History</button>
+          <button id="vaultButton" title="Encrypt local canvas data">Lock</button>
           <button id="shareButton" title="Prepare a private share link">Share</button>
           <div class="export-menu">
             <button id="exportButton" aria-expanded="false">Export</button>
@@ -90,6 +91,16 @@
           <p>Snapshots live only on this device.</p>
           <div id="timeline" class="timeline"></div>
           <footer><button value="cancel">Close</button><button id="snapshotButton" class="primary" value="default">Save snapshot</button></footer>
+        </form>
+      </dialog>
+      <dialog id="vaultDialog">
+        <form method="dialog" class="dialog-card">
+          <header><h2 id="vaultTitle">Encrypt this device</h2><button class="close-button" value="cancel" aria-label="Close">×</button></header>
+          <p id="vaultDescription">Create a passphrase to encrypt all local canvas data. It cannot be recovered if forgotten.</p>
+          <label class="modal-field">Passphrase <input id="vaultPassphrase" type="password" autocomplete="new-password" minlength="12" required /></label>
+          <label id="confirmPassphraseLabel" class="modal-field">Confirm <input id="vaultConfirmation" type="password" autocomplete="new-password" minlength="12" required /></label>
+          <p id="vaultError" class="form-error" role="alert"></p>
+          <footer><button value="cancel">Cancel</button><button id="vaultSubmit" class="primary" value="default">Encrypt data</button></footer>
         </form>
       </dialog>
     </main>
