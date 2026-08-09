@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f7f7f4" />
+    <title>MindCanvas</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <canvas id="canvas" aria-label="MindCanvas infinite drawing canvas"></canvas>
+
+      <header class="topbar">
+        <button class="wordmark" id="homeButton" title="Reset view">MindCanvas</button>
+        <div class="topbar-actions">
+          <button id="undoButton" title="Undo (Ctrl/Cmd + Z)" disabled>Undo</button>
+          <button id="redoButton" title="Redo (Ctrl/Cmd + Shift + Z)" disabled>Redo</button>
+          <span class="divider"></span>
+          <button id="clearButton" title="Clear canvas">Clear</button>
+          <div class="export-menu">
+            <button id="exportButton" aria-expanded="false">Export</button>
+            <div id="exportOptions" class="menu" hidden>
+              <button data-export="png">PNG image</button>
+              <button data-export="svg">SVG vector</button>
+              <button data-export="json">MindCanvas file</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <section class="toolbar" aria-label="Canvas tools">
+        <button class="tool active" data-tool="pen" title="Pen (P)"><span class="tool-icon pen-icon"></span><span>Pen</span></button>
+        <button class="tool" data-tool="brush" title="Brush (B)"><span class="tool-icon brush-icon"></span><span>Brush</span></button>
+        <button class="tool" data-tool="highlighter" title="Highlighter (H)"><span class="tool-icon highlighter-icon"></span><span>Mark</span></button>
+        <button class="tool" data-tool="text" title="Text (T)"><span class="tool-icon text-icon">T</span><span>Text</span></button>
+        <button class="tool" data-tool="eraser" title="Eraser (E)"><span class="tool-icon eraser-icon"></span><span>Erase</span></button>
+        <button class="tool" data-tool="lasso" title="Select (V)"><span class="tool-icon lasso-icon"></span><span>Select</span></button>
+        <button class="tool" data-tool="hand" title="Hand (Space)"><span class="tool-icon hand-icon"></span><span>Hand</span></button>
+      </section>
+
+      <aside class="inspector" aria-label="Tool settings">
+        <label class="setting"><span>Color</span><input id="colorInput" type="color" value="#171717" /></label>
+        <label class="setting"><span>Size</span><input id="sizeInput" type="range" min="1" max="36" value="4" /><output id="sizeOutput">4</output></label>
+      </aside>
+
+      <div class="zoom-control" aria-label="Zoom controls">
+        <button id="zoomOut" aria-label="Zoom out">−</button>
+        <button id="zoomLabel" title="Reset zoom">100%</button>
+        <button id="zoomIn" aria-label="Zoom in">+</button>
+      </div>
+      <p id="hint" class="hint">Draw freely. Your canvas is saved on this device.</p>
+      <div id="textEditor" class="text-editor" contenteditable="true" spellcheck="true" hidden></div>
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>
